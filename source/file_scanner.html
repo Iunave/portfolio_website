@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link href="white-pink.css" rel="stylesheet"/>
+    <title>Assembly file scanner</title>
+</head>
+<body>
+  <header>
+    <a href="homepage.html">Home</a>
+    <a href="about.html">About</a>
+    <a href="../content/CV.pdf">CV</a>
+  </header>
+
+  <h1 class="blog_title">Assembly file scanner</h1>
+
+  <p class="blog_text">
+    As I was getting fairly comfortable with languages such as C++, I started looking for other things to broaden my programming repertoire, at the same time, I wanted to create something original and not just follow in someone else’s footsteps.
+    <br><br>
+    Discussing with some of my friends I had the idea to create an Assembly program that would replace all of the image files in a computer with the popular internet dog <a href="https://knowyourmeme.com/memes/cheems">cheems</a>.
+    <br><br>
+    For learning assembly I used the guide <a href="http://www.egr.unlv.edu/~ed/assembly64.pdf">assembly64</a> that has a focus on Linux programming which suited this project very well.
+    For more in-depth resources about assembly instructions I used an <a href="https://www.felixcloutier.com/x86/">online reference</a> as well as the official <a href="https://www.intel.com/content/www/us/en/content-details/782156/intel-64-and-ia-32-architectures-software-developer-s-manual-combined-volumes-2a-2b-2c-and-2d-instruction-set-reference-a-z.html?wapkw=instruction%20set">intel documentation</a>.
+    <br><br>
+    The way you interact with files and directories in Linux is done via so-called file descriptors.
+    When you want to acquire such a file descriptor you request it from the kernel with the appropriate syscall such as open, and getting the files inside a directory is done via the getdents syscall.
+    Documentation for system calls can be found with the man command or an <a href="https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md">online reference</a>.
+  </p>
+
+  <pre class="code_block">
+mov rdi, filename
+mov rsi, OPTIONS
+mov rax, SYS_OPEN
+syscall</pre>
+
+  <pre class="code_block">
+mov rdi, my_file_descriptor
+mov rsi, buffer_address
+mov rdx, buffer_size
+mov rax, SYS_GETDENTS64
+syscall</pre>
+
+  <p class="blog_text">
+    This quickly became a problem for my program as there is a limit to how many open file descriptors you can have at the same time. You can see this limit with the command <strong>ulimit -n</strong>. On my system it reports a maximum of 1024.
+    Recursively searching through the entire home directory could require you to have a lot more than just 1024 open file descriptors, so I had to come up with a new solution.
+    <br><br>
+    Because this is assembly and I wanted to avoid introducing as much complexity as possible I went with a brute-force approach to simply store every file path that was encountered in a big block of memory.
+    Allocating memory in assembly can seem daunting at first but luckily for us there exists a syscall just for this purpose.
+    I ended up writing some helper functions to make this process very similar to the malloc family of function calls.
+  </p>
+
+  <pre class="code_block">
+  global mmap ;uint64 size -> void*
+mmap:
+mov rsi, rdi ;len
+mov rdi, 0 ;addr
+mov rdx, PROT_READ
+or rdx, PROT_WRITE
+mov r10, MAP_ANONYMOUS
+or r10, MAP_PRIVATE
+mov r8, -1 ; fd
+mov r9, 0 ; offset
+mov rax, SYS_MMAP
+syscall
+ret
+
+  global mremap ;void* addr, u64 oldsize, u64 newsize -> void*
+mremap:
+mov r10, REMAP_MAYMOVE
+mov rax, SYS_MREMAP
+syscall
+   
+  global munmap ;void addr, u64 len -> int
+munmap:
+mov rax, SYS_MUNMAP
+syscall
+ret</pre>
+
+  <p class="blog_text">
+    Now that we have access to all the files we need a way to distinguish which ones are image files and which ones are not.
+    This was actually the hardest part of this project as there exist no system call or other easy way to check a files type (unless you blindly trust the “.” extensions of the file name)
+    and additionally there are a lot of different popular image file formats, checking them all is not a reasonable approach.
+    I ended up singling out PNG, JFIF and Exif files.
+    By looking at the headers of some of the images I had available on my computer I could hard-code their markers aka the first bytes of data into the application and check for equality.
+  </p>
+
+  <pre class="code_block">
+PNG_marker dq 0x0a1a0a0d474e5089
+JFIF_marker dd 0x4649464a
+Exif_marker dd 0x66697845</pre>
+
+  <p class="blog_text">
+    Finally, once we know that the file is one we want to replace we use yet another system call called write and give it the replacement-image data.
+    One very convenient ability of most assemblers is the incbin directive, we can simply stuff the image data inside the application so we don't have to worry about having the image around once the program has been built!
+  </p>
+  <pre class="code_block">
+section .data
+  cheems_data: incbin "../content/cheems.png"
+  cheems_size equ $-cheems_data</pre>
+  <p class="blog_text">
+    To finish the project I added some pretty printing so that the user has an idea of what is going on.
+  </p>
+
+  <video class="blog_image" controls><source src="../content/cheemsit_showcase.webm" type="video/webm"></video>
+
+  <p class="blog_text">
+    One interesting behaviour of this program is that if you run it twice, the second run will be more than ten times faster.
+    My theory behind this is that the operating system caches the file properties so they dont have to be retrieved from disk, but this is something you could investigate further.
+  </p>
+
+  <p class="blog_text">
+    Working on this project has taught me a lot of useful information, not only did I learn to create a whole program in just assembly but I also got experienced with the low-level interface of the Linux kernel. <br><br>
+    The complete source code for this project can be found <a href="https://github.com/Iunave/cheemsit">here</a>.
+  </p>
+
+</body>
+</html>

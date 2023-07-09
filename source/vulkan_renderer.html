@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <link href="white-pink.css" rel="stylesheet">
+    <title>Vulkan renderer</title>
+</head>
+<body>
+    <header>
+        <a href="homepage.html">Home</a>
+        <a href="about.html">About</a>
+        <a href="../content/CV.pdf">CV</a>
+    </header>
+    <h1 class="blog_title">Vulkan renderer</h1>
+    <p class="blog_text">
+        Vulkan and graphics API's in general have been on my mind for a long time, but I have never found the time due to their complexity, until finally this year I decided to really give it a go. The results were well worth it. <br><br>
+        I quickly got to experience that Vulkan has a very steep learning curve, especially when you do not have any prior experience in graphics programming.
+        To my knowledge there does not exist any guides/tutorials on vulkan that also covers the basics of graphics programming, so for the theory behind it all I had to look at the <a href="https://learnopengl.com/">OpenGL tutorial</a>
+        and for the Vulkan-specific code I used the <a href="https://vulkan-tutorial.com/">vulkan tutorial</a> and a <a href="https://vkguide.dev/">vulkan guide</a>. <br><br>
+        There is <span style="font-style: italic">a lot</span> of initialization code in vulkan, and most of it is just repeated from what others have already done. It will suffice to say that this project uses Vulkan 1.3 and the dynamic-rendering extension.
+        To make my life a bit easier, all the memory allocations are done by <a href="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator">Vulkan Memory Allocator</a>. <br><br>
+        Once I had the initialization code mostly done it was fairly simple to get some geometry to render to the screen. I used <a href="https://github.com/assimp/assimp">assimp</a> to load the default cube model created in blender into the application.
+        To get some more life into the scene I also implemented some Bézier curves and drew them as lines. Below is a picture of a scene early in the developement process.
+    </p>
+    <img class="blog_image" src="../content/early_developement.avif" alt="cubes and beziers"/>
+    <p class="blog_text">
+        Now, to get different geometry to render to the same scene I needed some kind of way to keep track of each entity's properties such as their model and texture.
+        I wanted to stuff all my entities into a single array so each entity had to have the same size. The entity class ended up looking (simplified) like this.
+    </p>
+    <pre class="code_block">
+struct entity_t
+{
+    name_t name;
+    transform_t& transform();
+    model_t* model;
+    texture_t* texture;
+    material_t* material;
+};</pre>
+    <p class="blog_text">
+        The reason for entity_t having a function to get the transform (location, rotation, scale) is that by doing it this way we can stuff every transform into a separate array, making it much faster to iterate over every transform in the application.
+        Getting the transform for a given entity is done by indexing the transform array by the index of said entity in the entity array, thus we have to make sure to synchronize these two arrays with eachother. <br><br>
+        But actually, thats not the whole truth. The entities are not stored in a "normal" array like std::vector, but rather in a container type called a <a href="https://github.com/Iunave/slotmap">slotmap</a>.
+        This is because I quickly encountered a problem where I would store a reference to an entity in one frame, and in the next frame it could have been deleted!
+        The slotmap solves this by associating an ID with the reference so that if the ID has changed, we know the item is no longer valid.
+        I highly recommend you learn about this container if you havent already as its a very interesting and powerful tool. <br><br>
+        The next task was implementing shadows, I did this with the shadowmapping technique that is very popular for real-time applications.
+        Basically you render the scene from the lights point-of-view and store the depth of the fragments and later look it up to determine if the current fragment is in shadow from that light.
+        Heres how it ended up looking with three different colored light sources.
+    </p>
+    <img class="blog_image" src="../content/gun3lights.avif" alt="gun with 3 light sources"/>
+    <p class="blog_text">
+        With that, the core of the renderer is done. It can now render multiple different geometry with different textures and shaders applied.
+        To make it easier to modify the scene and remove and add lights and entities I decided to integrate the <a href="https://github.com/ocornut/imgui">ImGUI</a> library into the application.
+        This did require some modification of the library's backend as it used render passes and not dynamic-rendering by default, but it was nothing too complicated.
+    </p>
+    <img class="blog_image" src="../content/ui_showcase.avif" alt="ui showcase"/>
+    <p class="blog_text">
+        I also wanted to experiment with multithreading. The renderer is actually limited by the GPU and not the CPU at this time so this does not have any practical use but is purely a learning experience.
+        You can totally skip this step if you are not interested.
+        First thing to do is splitting the responsibilities of the program into two threads; the <span style="font-style: italic">main</span> and <span style="font-style: italic">render</span> thread using the <a href="https://man7.org/linux/man-pages/man7/pthreads.7.html">pthread</a> library.
+        As these two threads work in parallel to each-other we need to duplicate the data that the render-thread works with in order to avoid a data race.
+        The way these threads are implemented is shown in pseudo-code below:
+    </p>
+    <pre class="code_block">
+void main_thread_routine()
+{
+    while(true)
+    {
+        copy_render_data();
+        work();
+        wait_for_draw();
+    }
+}
+
+void render_thread_routine()
+{
+    while(true)
+    {
+        wait_for_render_data();
+        draw();
+    }
+}</pre>
+    <p class="blog_text">
+        Splitting an application into two main threads like this is a popular approach that is done by eg Unreal Engine.
+        In addition, the draw() function is itself multithreaded but this time with <a href="https://github.com/taskflow/taskflow">taskflow</a>.
+        The work() function is not as it is really small, but when your application increases in complexity it can of course be multithreaded as well.
+        Taskflow has a really nice way to visualize the workflow, ill let it speak for itself.
+    </p>
+    <img class="blog_image" src="../content/draw_flow.avif" alt="image showing the internals of the draw() call"/>
+    <p class="blog_text">
+        Everything for the renderer is now done! I wanted to make a night-sky themed scene for the final showcase. For the stars I used a rectangular billboard with a star-texture that either had 1 or 0 as alpha.
+        This is because the renderer does not support transparency, so instead i simply check if the fetched texture color has an alpha of 0 and if so; discard it.
+        In order to make the stars move across the sky I wrote a compute-shader that reads the instance buffer for the stars, modifies their respective locations and writes it back into the buffer.
+    </p>
+    <pre class="code_block">
+...
+layout(local_size_x=256, local_size_y=1, local_size_z=1) in;
+
+layout(std140, set=0, binding=0) uniform control
+{
+    float circle_time;
+    uint particle_count;
+};
+
+layout(scalar, set=0, binding=1) buffer particle_buffer
+{
+    particle_t particles[];
+};
+
+vec2 walk_circle(vec2 origin, float radius, float radian)
+{
+    origin.x += (radius * cos(radian));
+    origin.y += (radius * sin(radian));
+    return origin;
+}
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    if(gid < particle_count)
+    {
+        float horizontal_distance = length(particles[gid].location.xz);
+        float circle_time_offset = circle_time + PI2 * (float(gid) / float(particle_count));
+        particles[gid].location.xz = walk_circle(vec2(0, 0), horizontal_distance, circle_time_offset);
+    }
+}</pre>
+    <p class="blog_text">
+        And there we go! In addition, I included a point-light that changes color with time to give the scene some light and make it a bit more exciting.
+    </p>
+
+    <video class="blog_image" controls><source src="../content/night_light.webm" type="video/webm"></video>
+
+    <p class="blog_text">
+        Learning Vulkan has been a very hard and at times a frustrating experience. Many times my math did not work and I had to spend multiple days searching for the correct formulas,
+        but after all the effort it all came together and I am very happy with the progress that I have done.
+        The next step is to implement deferred-rendering, a technique to render many more light sources at once (currently the application is limited to ~10 lights on my hardware) this will be covered in the next post. <br> <br>
+        Thanks to my friend <a href="https://sketchfab.com/spacecowgrl">scaredykattie</a> for making some of the models showcased here and providing feedback! <br>
+        The source for this project can be found <a href="https://github.com/Iunave/vk-render">here</a>.
+    </p>
+</body>
+</html>

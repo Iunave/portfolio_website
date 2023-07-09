@@ -1,0 +1,91 @@
+html
+{
+}
+
+body
+{
+    font-size: 18px;
+    font-family: "Fira Sans Book", sans-serif;
+    color: black;
+    background-color: ghostwhite;
+    margin: 0;
+    padding: 0;
+}
+
+h1
+{
+    font-size: 32px;
+}
+
+a
+{
+    color: blue;
+    text-decoration: none;
+}
+
+a:hover
+{
+    color: blue;
+    text-decoration: underline;
+}
+
+header
+{
+    position: static;
+    top: 0;
+    padding: 10px;
+    margin: 0;
+    background-color: lightblue;
+    font-size: 25px;
+}
+
+.homepage_grid
+{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 50px;
+    grid-gap: 50px;
+    margin: 5%;
+}
+
+.blog_link
+{
+    text-align: center;
+    display: block;
+    margin: 10px;
+}
+
+.link_image
+{
+    width: 100%;
+    height: auto;
+}
+
+.blog_image
+{
+    display: block;
+    margin: 0 auto;
+    width: 50%;
+}
+
+.blog_title
+{
+    font-size: 32px;
+    text-align: center;
+    color: blue;
+}
+
+.blog_text
+{
+    margin: 25px 10%;
+}
+
+.code_block
+{
+    white-space: pre-wrap;
+    margin: 10px 10%;
+    text-align: left;
+    background-color: #dadada;
+    border: 1px solid blue;
+    padding: 10px;
+}
